@@ -1,0 +1,9 @@
+services:
+  immich-revive:
+    build: .
+    container_name: immich-revive
+    restart: unless-stopped
+    env_file:
+      - .env
+    # host network so localhost:2283 reaches immich directly
+    network_mode: host

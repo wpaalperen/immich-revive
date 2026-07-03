@@ -1,0 +1,16 @@
+[Unit]
+Description=immich-revive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# update paths if you cloned elsewhere
+WorkingDirectory=/opt/immich-revive
+EnvironmentFile=/opt/immich-revive/.env
+ExecStart=/usr/bin/python3 src/main.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
