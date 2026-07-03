@@ -2,13 +2,13 @@
 
 A lightweight background daemon that monitors [Immich](https://immich.app/) job queues and **automatically retries failed machine-learning tasks**.
 
-## The Problem
+## Problem
 
-If you offload ML processing (face detection, smart search, etc.) to a remote machine (e.g., a laptop) using Immich's [Remote Machine Learning](https://immich.app/docs/features/ml-hardware-acceleration) feature, jobs will fail whenever that machine goes offline. Immich does **not** automatically retry these failed jobs — you have to manually restart them via the Admin UI or CLI every single time.
+If you offload ML processing (face detection, smart search, etc.) to a remote machine using Immich's [Remote Machine Learning](https://immich.app/docs/features/ml-hardware-acceleration) feature, jobs will fail whenever that machine goes offline. Immich does **not** automatically retry these failed jobs — you have to manually restart them via the Admin UI or CLI every single time.
 
 ## The Solution
 
-This daemon runs on your Immich server (e.g., Raspberry Pi) and:
+This daemon runs on your Immich server and:
 
 1. **Polls** the Immich API every N seconds (default: 120s)
 2. **Detects** failed jobs in the queues you care about
@@ -113,19 +113,19 @@ All settings live in the `.env` file:
 
 ```
 ┌─────────────────────────────────────┐
-│  Immich Server (Raspberry Pi)       │
+│  Immich Server                      │
 │                                     │
 │  ┌───────────┐   ┌───────────────┐  │
 │  │ Immich    │   │ Auto-Resume   │  │
 │  │ Server    │◄──│ Daemon        │  │
-│  │           │   │ (this tool)   │  │
+│  │           │   │               │
 │  └─────┬─────┘   └───────────────┘  │
-│        │  ML requests                │
+│        │  ML requests               │
 └────────┼────────────────────────────┘
          │
          ▼
 ┌─────────────────────┐
-│  Laptop (ML Server) │  ← may go offline
+│  ML Server │  ← may go offline
 │  immich-machine-     │
 │  learning container  │
 └─────────────────────┘
@@ -135,7 +135,3 @@ All settings live in the `.env` file:
 2. Daemon detects failed jobs via Immich API
 3. Daemon clears the failures and re-queues assets
 4. Laptop comes back → jobs process successfully
-
-## License
-
-MIT
