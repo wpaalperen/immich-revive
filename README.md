@@ -6,7 +6,7 @@ A lightweight background daemon that monitors [Immich](https://immich.app/) job 
 
 If you offload ML processing (face detection, smart search, etc.) to a remote machine using Immich's [Remote Machine Learning](https://immich.app/docs/features/ml-hardware-acceleration) feature, jobs will fail whenever that machine goes offline. Immich does **not** automatically retry these failed jobs — you have to manually restart them via the Admin UI or CLI every single time.
 
-## The Solution
+## Solution
 
 This daemon runs on your Immich server and:
 
@@ -33,7 +33,7 @@ The moment your laptop comes back online, Immich seamlessly picks up where it le
 ### Option 1: Docker Compose (Recommended)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/immich-revive.git
+git clone https://github.com/wpaalperen/immich-revive
 cd immich-revive
 
 cp .env.example .env
@@ -70,7 +70,7 @@ docker logs -f immich-revive
 If you run this tool directly on the host (not in Docker), `localhost:2283` will work out of the box since Immich publishes its port to the host.
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/immich-revive.git /opt/immich-revive
+git clone https://github.com/wpaalperen/immich-revive /opt/immich-revive
 cd /opt/immich-revive
 
 pip3 install -r requirements.txt
@@ -118,16 +118,16 @@ All settings live in the `.env` file:
 │  ┌───────────┐   ┌───────────────┐  │
 │  │ Immich    │   │ Auto-Resume   │  │
 │  │ Server    │◄──│ Daemon        │  │
-│  │           │   │               │
+│  │           │   │               │  │
 │  └─────┬─────┘   └───────────────┘  │
 │        │  ML requests               │
 └────────┼────────────────────────────┘
          │
          ▼
 ┌─────────────────────┐
-│  ML Server │  ← may go offline
-│  immich-machine-     │
-│  learning container  │
+│  ML Server          │ ← may go offline
+│  immich-machine-    │
+│  learning container │
 └─────────────────────┘
 ```
 
@@ -135,3 +135,7 @@ All settings live in the `.env` file:
 2. Daemon detects failed jobs via Immich API
 3. Daemon clears the failures and re-queues assets
 4. Laptop comes back → jobs process successfully
+
+## License
+
+MIT
