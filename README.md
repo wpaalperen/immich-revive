@@ -94,6 +94,7 @@ All settings live in the `.env` file:
 | `IMMICH_URL` | `http://localhost:2283` | Full URL to your Immich instance |
 | `IMMICH_API_KEY` | *(required)* | Administrator API key |
 | `CHECK_INTERVAL` | `120` | Seconds between each check (minimum 10) |
+| `SWEEP_EVERY` | `5` | Every N cycles, do a full sweep for orphaned unprocessed assets |
 | `MONITORED_JOBS` | `faceDetection,smartSearch,metadataExtraction` | Comma-separated list of queues to watch |
 
 ### Available Queue Names
