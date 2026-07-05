@@ -8,7 +8,7 @@ import sys
 
 import requests
 
-from config import IMMICH_URL, API_KEY, CHECK_INTERVAL, MONITORED_JOBS
+from config import IMMICH_URL, API_KEY, CHECK_INTERVAL, MONITORED_JOBS, SWEEP_EVERY
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,13 +42,7 @@ def _get(path: str):
 
 
 def _put(path: str, body: dict):
-    r = requests.put(f"{IMMICH_URL}{path}", json=body, headers=HEADERS, timeout=15)
-    return r
-
-
-def _delete(path: str, body: dict):
-    r = requests.delete(f"{IMMICH_URL}{path}", json=body, headers=HEADERS, timeout=15)
-    return r
+    return requests.put(f"{IMMICH_URL}{path}", json=body, headers=HEADERS, timeout=15)
 
 
 def detect_api_version() -> str:
@@ -62,7 +56,30 @@ def detect_api_version() -> str:
     return "v1"
 
 
-# legacy api — immich < v2.4.0
+def clear_failed(job_name: str) -> bool:
+    """clear failed entries from bullmq. works on both v1 and v2 — the legacy
+    endpoint is the only safe way because the v2 DELETE /api/queues/:name/jobs
+    calls Queue.drain() which destroys ALL waiting jobs, not just failed ones."""
+    r = _put(f"/api/jobs/{job_name}", {"command": "clear-failed"})
+    if r.status_code not in (200, 201, 204):
+        logger.error("[%s] clear-failed failed (HTTP %s): %s", job_name, r.status_code, r.text)
+        return False
+    return True
+
+
+def start_queue(job_name: str) -> bool:
+    """tell immich to scan db for unprocessed assets and queue them."""
+    r = _put(f"/api/jobs/{job_name}", {"command": "start", "force": False})
+    if r.status_code in (200, 201, 204):
+        return True
+    if r.status_code == 400:
+        # queue already has active jobs — this is fine, means it's already processing
+        return True
+    logger.error("[%s] start failed (HTTP %s): %s", job_name, r.status_code, r.text)
+    return False
+
+
+# getting failed counts
 
 def get_failed_counts_v1() -> dict[str, int]:
     data = _get("/api/jobs")
@@ -77,24 +94,6 @@ def get_failed_counts_v1() -> dict[str, int]:
     return result
 
 
-def retry_failed_v1(job_name: str) -> bool:
-    # 1) clear failed entries from bullmq
-    r = _put(f"/api/jobs/{job_name}", {"command": "clear-failed"})
-    if r.status_code not in (200, 201, 204):
-        logger.error("[%s] clear-failed failed (HTTP %s): %s", job_name, r.status_code, r.text)
-        return False
-
-    # 2) re-queue unprocessed assets
-    r = _put(f"/api/jobs/{job_name}", {"command": "start", "force": False})
-    if r.status_code not in (200, 201, 204):
-        logger.error("[%s] start failed (HTTP %s): %s", job_name, r.status_code, r.text)
-        return False
-
-    return True
-
-
-# new api — immich >= v2.4.0
-
 def get_failed_counts_v2() -> dict[str, int]:
     queues = _get("/api/queues")
     result: dict[str, int] = {}
@@ -108,20 +107,22 @@ def get_failed_counts_v2() -> dict[str, int]:
     return result
 
 
-def retry_failed_v2(job_name: str) -> bool:
-    # 1) delete failed entries via new api
-    r = _delete(f"/api/queues/{job_name}/jobs", {"failed": True})
-    if r.status_code not in (200, 201, 204):
-        logger.error("[%s] delete failed jobs failed (HTTP %s): %s", job_name, r.status_code, r.text)
-        return False
+# retry and sweep logic
 
-    # 2) re-queue unprocessed assets
-    r = _put(f"/api/jobs/{job_name}", {"command": "start", "force": False})
-    if r.status_code not in (200, 201, 204):
-        logger.error("[%s] start failed (HTTP %s): %s", job_name, r.status_code, r.text)
+def retry_failed(job_name: str) -> bool:
+    """clear failed entries, then re-queue unprocessed assets."""
+    if not clear_failed(job_name):
         return False
+    return start_queue(job_name)
 
-    return True
+
+def sweep_unprocessed():
+    """periodic full sweep: clear any lingering failed entries and trigger
+    start to catch orphaned unprocessed assets in the database."""
+    for job_name in MONITORED_JOBS:
+        clear_failed(job_name)
+        if start_queue(job_name):
+            logger.info("[%s] sweep: triggered re-queue for unprocessed assets.", job_name)
 
 
 def check_and_resume(api_version: str):
@@ -137,8 +138,7 @@ def check_and_resume(api_version: str):
         for job_name, count in failed.items():
             logger.info("[%s] %d failed job(s) detected, clearing and re-queuing...", job_name, count)
 
-            ok = (retry_failed_v2 if api_version == "v2" else retry_failed_v1)(job_name)
-            if ok:
+            if retry_failed(job_name):
                 logger.info("[%s] re-queued successfully.", job_name)
             else:
                 logger.warning("[%s] retry failed, will try again next cycle.", job_name)
@@ -157,6 +157,7 @@ def main():
     logger.info("=" * 55)
     logger.info("  server         : %s", IMMICH_URL)
     logger.info("  check interval : every %d seconds", CHECK_INTERVAL)
+    logger.info("  sweep every    : %d cycles (~%d min)", SWEEP_EVERY, (SWEEP_EVERY * CHECK_INTERVAL) // 60)
     logger.info("  queues         : %s", ", ".join(MONITORED_JOBS))
 
     api_version = detect_api_version()
@@ -167,8 +168,18 @@ def main():
 
     logger.info("=" * 55)
 
+    cycle = 0
     while running:
+        cycle += 1
+
         check_and_resume(api_version)
+
+        if cycle % SWEEP_EVERY == 0:
+            try:
+                sweep_unprocessed()
+            except requests.exceptions.RequestException as e:
+                logger.error("sweep failed: %s", e)
+
         for _ in range(CHECK_INTERVAL):
             if not running:
                 break
